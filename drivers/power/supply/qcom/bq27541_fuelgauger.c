@@ -206,6 +206,7 @@ struct cmd_address {
 	u8	reg_temp;
 	u8	reg_volt;
 	u8	reg_rm;
+	u8	reg_fcc;
 	u8	reg_ai;
 	u8	reg_soc;
 	u8	reg_helth;
@@ -920,9 +921,12 @@ static int bq27541_full_chg_capacity(struct bq27541_device_info *di)
 
 	if (di->allow_reading) {
 #ifdef CONFIG_GAUGE_BQ27411
-		/* david.liu@bsp, 20161004 Add BQ27411 support */
-		ret = bq27541_read(BQ27411_REG_FCC,
-				&cap, 0, di);
+		/*
+		 * The OP6 driver supports both BQ27541 and BQ27411 at runtime.
+		 * Do not select the FCC register at compile time: 0x0e and 0x12
+		 * have different meanings on the two gauges.
+		 */
+		ret = bq27541_read(di->cmd_addr.reg_fcc, &cap, 0, di);
 #else
 		ret = bq27541_read(BQ27541_REG_FCC, &cap, 0, di);
 #endif
@@ -1265,6 +1269,7 @@ static void gauge_set_cmd_addr(int device_type)
 		bq27541_di->cmd_addr.reg_temp = BQ27541_REG_TEMP;
 		bq27541_di->cmd_addr.reg_volt = BQ27541_REG_VOLT;
 		bq27541_di->cmd_addr.reg_rm = BQ27541_REG_RM;
+		bq27541_di->cmd_addr.reg_fcc = BQ27541_REG_FCC;
 		bq27541_di->cmd_addr.reg_ai = BQ27541_REG_AI;
 		bq27541_di->cmd_addr.reg_soc = BQ27541_REG_SOC;
 		bq27541_di->cmd_addr.reg_helth = BQ27541_REG_NIC;
@@ -1272,6 +1277,7 @@ static void gauge_set_cmd_addr(int device_type)
 		bq27541_di->cmd_addr.reg_temp = BQ27411_REG_TEMP;
 		bq27541_di->cmd_addr.reg_volt = BQ27411_REG_VOLT;
 		bq27541_di->cmd_addr.reg_rm = BQ27411_REG_RM;
+		bq27541_di->cmd_addr.reg_fcc = BQ27411_REG_FCC;
 		bq27541_di->cmd_addr.reg_ai = BQ27411_REG_AI;
 		bq27541_di->cmd_addr.reg_soc = BQ27411_REG_SOC;
 		bq27541_di->cmd_addr.reg_helth = BQ27411_REG_HEALTH;
