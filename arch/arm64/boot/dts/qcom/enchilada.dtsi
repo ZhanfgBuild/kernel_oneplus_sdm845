@@ -628,6 +628,17 @@ status = "disabled";
 &pmi8998_fg {
 	qcom,fg-force-load-profile;
 	oem,use_external_fg;
+
+	/*
+	 * This device uses a 4500 mAh replacement cell. Keep the stock
+	 * chemistry profile until the external TI gauge variant is positively
+	 * identified and its DataFlash can be updated with the correct layout.
+	 * 3240 mAh is the measured stock profile nominal capacity and remains
+	 * the explicit safety fallback.
+	 */
+	oem,design-capacity-mah = <4500>;
+	oem,design-capacity-fallback-mah = <3240>;
+
 	qcom,fg-rsense-sel = <0>;
 	qcom,fg-sys-term-current = <180>;
 	qcom,fg-chg-term-current = <150>;

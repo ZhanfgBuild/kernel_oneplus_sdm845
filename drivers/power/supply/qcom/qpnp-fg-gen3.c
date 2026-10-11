@@ -201,6 +201,8 @@ struct fg_dt_props {
 	int	cl_max_cap_dec;
 	int	cl_max_cap_limit;
 	int	cl_min_cap_limit;
+	int	design_cap_mah;
+	int	design_cap_fallback_mah;
 	int	jeita_hyst_temp;
 	int	batt_temp_delta;
 	int	esr_flt_switch_temp;
@@ -2968,7 +2970,31 @@ done:
 		pr_err("Error in reading %04x[%d] rc=%d\n", NOM_CAP_WORD,
 			NOM_CAP_OFFSET, rc);
 	} else {
-		chip->cl.nom_cap_uah = (int)(buf[0] | buf[1] << 8) * 1000;
+		int profile_nom_cap_mah = (int)(buf[0] | buf[1] << 8);
+		int selected_nom_cap_mah = profile_nom_cap_mah;
+
+		/*
+		 * A replacement cell can have a different rated capacity while
+		 * retaining the stock chemistry profile. Prefer the explicit
+		 * replacement capacity when sane. If it is malformed, use the
+		 * DT fallback; if that is also invalid, preserve the untouched
+		 * profile/SRAM nominal capacity.
+		 */
+		if (chip->dt.design_cap_mah >= 1000 &&
+				chip->dt.design_cap_mah <= 8000) {
+			selected_nom_cap_mah = chip->dt.design_cap_mah;
+		} else if (chip->dt.design_cap_mah &&
+				chip->dt.design_cap_fallback_mah >= 1000 &&
+				chip->dt.design_cap_fallback_mah <= 8000) {
+			selected_nom_cap_mah = chip->dt.design_cap_fallback_mah;
+			pr_warn("invalid design capacity %d mAh; using fallback %d mAh\n",
+				chip->dt.design_cap_mah, selected_nom_cap_mah);
+		}
+
+		chip->cl.nom_cap_uah = selected_nom_cap_mah * 1000;
+		pr_info("nominal capacity: profile=%d mAh selected=%d mAh\n",
+			profile_nom_cap_mah, selected_nom_cap_mah);
+
 		rc = fg_load_learned_cap_from_sram(fg);
 		if (rc < 0)
 			pr_err("Error in loading capacity learning data, rc:%d\n",
@@ -5249,6 +5275,24 @@ static int fg_parse_dt(struct fg_gen3_chip *chip)
 	fg->use_external_fg =
 	of_property_read_bool(node, "oem,use_external_fg");
 	pr_info("use_external_fg=%d\n", fg->use_external_fg);
+
+	/*
+	 * Optional OEM replacement-battery capacity override. This changes
+	 * the nominal capacity used by FG Gen3 bookkeeping/reporting only;
+	 * it deliberately does not rewrite the external TI gauge DataFlash.
+	 * Keeping the profile-derived value as the final fallback makes a bad
+	 * or missing DT value fail safe.
+	 */
+	chip->dt.design_cap_mah = 0;
+	rc = of_property_read_u32(node, "oem,design-capacity-mah", &temp);
+	if (!rc)
+		chip->dt.design_cap_mah = temp;
+
+	chip->dt.design_cap_fallback_mah = 0;
+	rc = of_property_read_u32(node, "oem,design-capacity-fallback-mah",
+			&temp);
+	if (!rc)
+		chip->dt.design_cap_fallback_mah = temp;
 
 	chip->dt.jeita_thresholds[JEITA_COLD] = DEFAULT_BATT_TEMP_COLD;
 	chip->dt.jeita_thresholds[JEITA_COOL] = DEFAULT_BATT_TEMP_COOL;
