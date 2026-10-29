@@ -2,7 +2,9 @@
 #include <linux/fs.h>
 #include <linux/gfp.h>
 #include <linux/kernel.h>
+#include <linux/mutex.h>
 #include <linux/slab.h>
+#include <linux/string.h>
 #include <linux/version.h>
 #include <linux/sched.h>
 #include <linux/pid.h>
@@ -26,28 +28,59 @@
 #include "manager/manager_identity.h"
 #include "ksu.h"
 
-// Dynamic sign configuration
+// Dynamic sign configuration. size, hash, and is_set are one snapshot:
+// writers and readers take dynamic_manager_lock around all three.
+static DEFINE_MUTEX(dynamic_manager_lock);
 static struct dynamic_manager_config dynamic_manager = {
     .size = 0x300,
     .hash = "0000000000000000000000000000000000000000000000000000000000000000",
     .is_set = 0
 };
+/* Filled under dynamic_manager_lock. Stable against writers, reused by the
+ * next ksu_get_dynamic_manager_sign() call.
+ */
+static char dynamic_manager_hash_copy[sizeof(dynamic_manager.hash)];
 
 bool ksu_is_dynamic_manager_enabled(void)
 {
-    return dynamic_manager.is_set;
+    bool enabled;
+
+    mutex_lock(&dynamic_manager_lock);
+    enabled = dynamic_manager.is_set;
+    mutex_unlock(&dynamic_manager_lock);
+    return enabled;
 }
 
 apk_sign_key_t ksu_get_dynamic_manager_sign(void)
 {
-    apk_sign_key_t sign_key = { .size = dynamic_manager.size, .sha256 = dynamic_manager.hash };
+    apk_sign_key_t sign_key;
 
+    mutex_lock(&dynamic_manager_lock);
+    sign_key.size = dynamic_manager.size;
+    memcpy(dynamic_manager_hash_copy, dynamic_manager.hash,
+           sizeof(dynamic_manager_hash_copy));
+    mutex_unlock(&dynamic_manager_lock);
+    sign_key.sha256 = dynamic_manager_hash_copy;
     return sign_key;
+}
+
+bool ksu_dynamic_manager_matches(unsigned int size, const char *hash)
+{
+    bool match = false;
+
+    if (!hash)
+        return false;
+
+    mutex_lock(&dynamic_manager_lock);
+    if (dynamic_manager.is_set && dynamic_manager.size == size &&
+        strcmp(dynamic_manager.hash, hash) == 0)
+        match = true;
+    mutex_unlock(&dynamic_manager_lock);
+    return match;
 }
 
 int ksu_handle_dynamic_manager(struct ksu_dynamic_manager_cmd *cmd)
 {
-    unsigned long flags;
     int ret = 0;
     int i;
 
@@ -71,23 +104,24 @@ int ksu_handle_dynamic_manager(struct ksu_dynamic_manager_cmd *cmd)
             }
         }
 
-        if (dynamic_manager.is_set) {
+        mutex_lock(&dynamic_manager_lock);
+        if (dynamic_manager.is_set)
             ksu_unregister_manager_by_signature_index(KSU_SIGNATURE_INDEX_DYNAMIC_MANAGER);
-        }
 
         dynamic_manager.size = cmd->size;
         // userspace always put an char[64] to our
         // we just use memcpy to copy memory, and flag [64] to \0 by ourselves
         memcpy(dynamic_manager.hash, cmd->hash, 64);
         dynamic_manager.hash[64] = '\0';
-
         dynamic_manager.is_set = 1;
+        mutex_unlock(&dynamic_manager_lock);
 
         track_throne(TRACK_THRONE_FORCE_SEARCH_MGR);
         pr_info("dynamic manager updated: size=0x%x, hash=%.16s\n", cmd->size, cmd->hash);
         break;
 
     case DYNAMIC_MANAGER_OP_GET:
+        mutex_lock(&dynamic_manager_lock);
         if (dynamic_manager.is_set) {
             cmd->size = dynamic_manager.size;
             memcpy(cmd->hash, dynamic_manager.hash,
@@ -96,9 +130,12 @@ int ksu_handle_dynamic_manager(struct ksu_dynamic_manager_cmd *cmd)
         } else {
             ret = -ENODATA;
         }
+        mutex_unlock(&dynamic_manager_lock);
         break;
     case DYNAMIC_MANAGER_OP_WIPE:
+        mutex_lock(&dynamic_manager_lock);
         dynamic_manager.is_set = 0;
+        mutex_unlock(&dynamic_manager_lock);
         ret = 0;
         ksu_unregister_manager_by_signature_index(KSU_SIGNATURE_INDEX_DYNAMIC_MANAGER);
         pr_info("dynamic manager kernel settings reseted");
