@@ -8,6 +8,7 @@
 #include <linux/path.h>
 #include <linux/susfs_def.h>
 #include <linux/statfs.h>
+#include <linux/build_bug.h>
 
 #define SUSFS_VERSION "v2.1.0"
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5,0,0)
@@ -60,18 +61,29 @@ struct st_susfs_hide_sus_mnts_for_non_su_procs {
 
 /* sus_kstat */
 #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
-#define KSTAT_SPOOF_INO (1 << 0)
-#define KSTAT_SPOOF_DEV (1 << 1)
-#define KSTAT_SPOOF_NLINK (1 << 2)
-#define KSTAT_SPOOF_SIZE (1 << 3)
-#define KSTAT_SPOOF_ATIME_TV_SEC (1 << 4)
-#define KSTAT_SPOOF_ATIME_TV_NSEC (1 << 5)
-#define KSTAT_SPOOF_MTIME_TV_SEC (1 << 6)
-#define KSTAT_SPOOF_MTIME_TV_NSEC (1 << 7)
-#define KSTAT_SPOOF_CTIME_TV_SEC (1 < 8)
-#define KSTAT_SPOOF_CTIME_TV_NSEC (1 << 9)
-#define KSTAT_SPOOF_BLOCKS (1 << 10)
-#define KSTAT_SPOOF_BLKSIZE (1 << 11)
+#define KSTAT_SPOOF_INO (1U << 0)
+#define KSTAT_SPOOF_DEV (1U << 1)
+#define KSTAT_SPOOF_NLINK (1U << 2)
+#define KSTAT_SPOOF_SIZE (1U << 3)
+#define KSTAT_SPOOF_ATIME_TV_SEC (1U << 4)
+#define KSTAT_SPOOF_ATIME_TV_NSEC (1U << 5)
+#define KSTAT_SPOOF_MTIME_TV_SEC (1U << 6)
+#define KSTAT_SPOOF_MTIME_TV_NSEC (1U << 7)
+/* (1 < 8) is a comparison and equals 1, which aliases KSTAT_SPOOF_INO. */
+#define KSTAT_SPOOF_CTIME_TV_SEC (1U << 8)
+#define KSTAT_SPOOF_CTIME_TV_NSEC (1U << 9)
+#define KSTAT_SPOOF_BLOCKS (1U << 10)
+#define KSTAT_SPOOF_BLKSIZE (1U << 11)
+
+static_assert(KSTAT_SPOOF_CTIME_TV_SEC == (1U << 8),
+	"KSTAT_SPOOF_CTIME_TV_SEC must be bit 8");
+static_assert((KSTAT_SPOOF_INO | KSTAT_SPOOF_DEV | KSTAT_SPOOF_NLINK |
+	       KSTAT_SPOOF_SIZE | KSTAT_SPOOF_ATIME_TV_SEC |
+	       KSTAT_SPOOF_ATIME_TV_NSEC | KSTAT_SPOOF_MTIME_TV_SEC |
+	       KSTAT_SPOOF_MTIME_TV_NSEC | KSTAT_SPOOF_CTIME_TV_SEC |
+	       KSTAT_SPOOF_CTIME_TV_NSEC | KSTAT_SPOOF_BLOCKS |
+	       KSTAT_SPOOF_BLKSIZE) == 0x0fffu,
+	"KSTAT_SPOOF_* flags must be distinct bits 0..11");
 
 struct st_susfs_sus_kstat {
 	int                                     is_statically;
