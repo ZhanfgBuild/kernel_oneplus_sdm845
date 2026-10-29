@@ -1,4 +1,5 @@
 #include "feature/selinux_hide.h"
+#include <linux/atomic.h>
 #include <linux/err.h>
 #include <linux/fs.h>
 #include <linux/namei.h>
@@ -17,12 +18,12 @@ bool ksu_boot_completed __read_mostly = false;
 
 void on_post_fs_data(void)
 {
-    static bool done = false;
-    if (done) {
+    static atomic_t done = ATOMIC_INIT(0);
+
+    if (atomic_cmpxchg(&done, 0, 1) != 0) {
         pr_info("on_post_fs_data already done\n");
         return;
     }
-    done = true;
     pr_info("on_post_fs_data!\n");
 
     ksu_load_allow_list();

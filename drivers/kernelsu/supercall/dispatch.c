@@ -1,3 +1,4 @@
+#include <linux/atomic.h>
 #include <linux/capability.h>
 #include <linux/cred.h>
 #include <linux/slab.h>
@@ -103,9 +104,8 @@ static int do_report_event(void __user *arg)
 
     switch (cmd.event) {
     case EVENT_POST_FS_DATA: {
-        static bool post_fs_data_lock = false;
-        if (!post_fs_data_lock) {
-            post_fs_data_lock = true;
+        static atomic_t post_fs_data_once = ATOMIC_INIT(0);
+        if (atomic_cmpxchg(&post_fs_data_once, 0, 1) == 0) {
             if (ksu_late_loaded) {
                 pr_info("post-fs-data skipped (late load)\n");
             } else {
@@ -116,9 +116,8 @@ static int do_report_event(void __user *arg)
         break;
     }
     case EVENT_BOOT_COMPLETED: {
-        static bool boot_complete_lock = false;
-        if (!boot_complete_lock) {
-            boot_complete_lock = true;
+        static atomic_t boot_complete_once = ATOMIC_INIT(0);
+        if (atomic_cmpxchg(&boot_complete_once, 0, 1) == 0) {
             if (ksu_late_loaded) {
                 pr_info("boot_complete skipped (late load)\n");
             } else {
