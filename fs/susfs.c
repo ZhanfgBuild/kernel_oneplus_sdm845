@@ -877,8 +877,18 @@ void susfs_add_open_redirect(void __user **user_info) {
 	}
 
 	if (is_first_dup_found) {
-		hash_for_each_possible_safe(OPEN_REDIRECT_HLIST, tmp_entry_redirected, tmp_hlist_node, node, redirected_inode->i_ino) {
-			if (!strcmp(tmp_entry_redirected->info.target_pathname, info.redirected_pathname)) {
+		/* Retarget looks up the previous redirected inode. The new path
+		 * is a different bucket, so searching it leaves the old reverse
+		 * entry behind.
+		 */
+		hash_for_each_possible_safe(OPEN_REDIRECT_HLIST, tmp_entry_redirected, tmp_hlist_node, node, tmp_entry_target->redirected_ino) {
+			if (tmp_entry_redirected->reversed_lookup_only &&
+			    tmp_entry_redirected->target_ino == tmp_entry_target->redirected_ino &&
+			    tmp_entry_redirected->target_dev == tmp_entry_target->redirected_dev &&
+			    tmp_entry_redirected->redirected_ino == tmp_entry_target->target_ino &&
+			    tmp_entry_redirected->redirected_dev == tmp_entry_target->target_dev &&
+			    !strcmp(tmp_entry_redirected->info.target_pathname,
+				    tmp_entry_target->info.redirected_pathname)) {
 				is_second_dup_found = true;
 				hash_del_rcu(&tmp_entry_redirected->node);
 				break;

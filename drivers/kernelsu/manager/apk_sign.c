@@ -145,13 +145,10 @@ static bool check_block(struct file *fp, u32 *size4, loff_t *pos, u32 *offset, u
         }
     }
 
-    if (!signature_valid && ksu_is_dynamic_manager_enabled()) {
-        sign_key = ksu_get_dynamic_manager_sign();
-        if (*size4 == sign_key.size && strcmp(sign_key.sha256, hash_str) == 0) {
-            if (matched_index)
-                *matched_index = KSU_SIGNATURE_INDEX_DYNAMIC_MANAGER;
-            signature_valid = true;
-        }
+    if (!signature_valid && ksu_dynamic_manager_matches(*size4, hash_str)) {
+        if (matched_index)
+            *matched_index = KSU_SIGNATURE_INDEX_DYNAMIC_MANAGER;
+        signature_valid = true;
     }
 
     *offset += *size4;
